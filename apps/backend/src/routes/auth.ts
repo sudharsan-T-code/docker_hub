@@ -8,6 +8,27 @@ const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET || "supersecretjwtdockerclonekey";
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || "supersecretrefreshkey";
 
+// Helper to handle database and connection errors gracefully
+function handleDatabaseError(error: any, res: Response) {
+  console.error("Database operation failed:", error);
+  
+  const isConnectionError = 
+    error.code?.startsWith("P10") || // P1000, P1001, P1002, etc. (credentials, connection, etc.)
+    error.code?.startsWith("P2024") || // connection timeout
+    error.message?.includes("Can't reach database server") ||
+    error.message?.includes("connection") ||
+    error.name === "PrismaClientInitializationError" ||
+    error.name === "PrismaClientRustPanicError";
+
+  if (isConnectionError) {
+    return res.status(503).json({ 
+      error: "Database service is temporarily unavailable. Please make sure your database server is running." 
+    });
+  }
+
+  return res.status(500).json({ error: error.message || "An unexpected error occurred" });
+}
+
 // Register
 router.post("/register", async (req, res) => {
   try {
@@ -17,9 +38,20 @@ router.post("/register", async (req, res) => {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
+    const sanitizedUsername = username.trim().toLowerCase();
+    const sanitizedEmail = email.trim().toLowerCase();
+
+    // Verify username format: alphanumeric and underscores only
+    if (!/^[a-zA-Z0-9_]+$/.test(sanitizedUsername)) {
+      return res.status(400).json({ error: "Username can only contain alphanumeric characters and underscores" });
+    }
+
     const existingUser = await prisma.user.findFirst({
       where: {
-        OR: [{ username }, { email }],
+        OR: [
+          { username: sanitizedUsername },
+          { email: sanitizedEmail }
+        ],
       },
     });
 
@@ -32,11 +64,11 @@ router.post("/register", async (req, res) => {
 
     const user = await prisma.user.create({
       data: {
-        username,
-        email,
+        username: sanitizedUsername,
+        email: sanitizedEmail,
         passwordHash,
         fullName,
-        avatarUrl: `https://api.dicebear.com/7.x/identicon/svg?seed=${username}`,
+        avatarUrl: `https://api.dicebear.com/7.x/identicon/svg?seed=${sanitizedUsername}`,
       },
     });
 
@@ -60,7 +92,7 @@ router.post("/register", async (req, res) => {
       },
     });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    handleDatabaseError(error, res);
   }
 });
 
@@ -73,8 +105,10 @@ router.post("/login", async (req, res) => {
       return res.status(400).json({ error: "Username and password required" });
     }
 
+    const sanitizedUsername = username.trim().toLowerCase();
+
     const user = await prisma.user.findUnique({
-      where: { username },
+      where: { username: sanitizedUsername },
     });
 
     if (!user) {
@@ -121,7 +155,7 @@ router.post("/login", async (req, res) => {
       },
     });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    handleDatabaseError(error, res);
   }
 });
 
@@ -155,7 +189,7 @@ router.post("/refresh", async (req, res) => {
       res.json({ accessToken });
     });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    handleDatabaseError(error, res);
   }
 });
 
@@ -171,7 +205,7 @@ router.post("/logout", async (req, res) => {
     }
     res.json({ message: "Logged out successfully" });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    handleDatabaseError(error, res);
   }
 });
 
@@ -199,7 +233,7 @@ router.get("/me", authenticateToken, async (req: AuthenticatedRequest, res: Resp
 
     res.json(user);
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    handleDatabaseError(error, res);
   }
 });
 
