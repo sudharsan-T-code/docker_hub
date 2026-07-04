@@ -1,0 +1,138 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id           String        @id @default(uuid())
+  username     String        @unique
+  email        String        @unique
+  passwordHash String
+  fullName     String?
+  avatarUrl    String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  stars        Star[]
+  notifications Notification[]
+  accessTokens AccessToken[]
+  logs         ActivityLog[]
+}
+
+model Organization {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  displayName String?
+  description String?
+  avatarUrl   String?
+  ownerId     String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  teams       Team[]
+}
+
+model Team {
+  id          String       @id @default(uuid())
+  name        String
+  description String?
+  orgId       String
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@unique([orgId, name])
+}
+
+model Repository {
+  id               String   @id @default(uuid())
+  namespace        String   // Can be username or organization name
+  name             String
+  description      String?
+  isPrivate        Boolean  @default(false)
+  isOfficial       Boolean  @default(false)
+  isVerified       Boolean  @default(false)
+  pullCount        Int      @default(0)
+  starCount        Int      @default(0)
+  lastUpdated      DateTime @default(now()) @updatedAt
+  readme           String?
+  dockerfile       String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  categories       String[] @default([])
+  architectures    String[] @default(["amd64", "arm64"])
+  operatingSystems String[] @default(["linux"])
+
+  tags             Tag[]
+  stars            Star[]
+  pulls            Pull[]
+
+  @@unique([namespace, name])
+}
+
+model Tag {
+  id             String     @id @default(uuid())
+  repositoryId   String
+  repository     Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  name           String     // e.g., "latest", "3.18"
+  digest         String     @unique
+  compressedSize Int
+  lastPushed     DateTime   @default(now())
+  pushedBy       String?
+  os             String     @default("linux")
+  arch           String     @default("amd64")
+  layers         Int        @default(1)
+
+  @@unique([repositoryId, name])
+}
+
+model Star {
+  userId       String
+  repositoryId String
+  repository   Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+
+  @@id([userId, repositoryId])
+}
+
+model Pull {
+  id           String     @id @default(uuid())
+  repositoryId String
+  repository   Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  timestamp    DateTime   @default(now())
+  pullCount    Int        @default(1)
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  read      Boolean  @default(false)
+  type      String   @default("INFO") // INFO, SUCCESS, WARNING, ERROR
+  createdAt DateTime @default(now())
+}
+
+model AccessToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  revoked   Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model ActivityLog {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  username  String
+  action    String   // PUSH, PULL, CREATE_REPO, DELETE_REPO, LOGIN
+  details   String
+  createdAt DateTime @default(now())
+}
