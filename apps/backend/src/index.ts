@@ -22,6 +22,15 @@ app.use(cors({
   credentials: true
 }));
 app.use(express.json());
+app.get("/", (req, res) => {
+  res.json({
+    project: "Docker Hub Clone Backend",
+    version: "1.0.0",
+    status: "Running",
+    health: "/api/health",
+    registry: "/v2"
+  });
+});
 
 // Routes
 app.use("/api/auth", authRouter);
